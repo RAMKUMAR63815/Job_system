@@ -3,6 +3,7 @@ from sqlalchemy import Integer
 from sqlalchemy import String
 from sqlalchemy import JSON
 from sqlalchemy import DateTime
+from sqlalchemy import Float
 
 from app.core.database import Base
 
@@ -29,3 +30,5 @@ class Job(Base):
     started_at = Column(DateTime)
 
     completed_at = Column(DateTime)
+
+    processing_time = Column(Float)

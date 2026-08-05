@@ -12,7 +12,6 @@ from app.workers.tasks import process_job
 router = APIRouter()
 
 
-
 # Home API
 @router.get("/")
 def home():
@@ -40,6 +39,8 @@ def create_job(
 
         status="Pending",
 
+        retry_count=0,
+
         created_at=datetime.now()
 
     )
@@ -52,13 +53,39 @@ def create_job(
     db.refresh(new_job)
 
 
-    # Send job to Redis Queue
-    process_job.delay(new_job.id)
+
+    # Priority based queue routing
+
+    if new_job.priority == "high":
+
+        process_job.apply_async(
+            args=[new_job.id],
+            queue="high"
+        )
+
+
+    elif new_job.priority == "medium":
+
+        process_job.apply_async(
+            args=[new_job.id],
+            queue="medium"
+        )
+
+
+    else:
+
+        process_job.apply_async(
+            args=[new_job.id],
+            queue="low"
+        )
+
 
 
     return {
 
         "id": new_job.id,
+
+        "priority": new_job.priority,
 
         "status": new_job.status,
 
@@ -86,7 +113,7 @@ def get_jobs(
 @router.get("/jobs/{id}")
 def get_job(
 
-    id:int,
+    id: int,
 
     db: Session = Depends(get_db)
 
@@ -109,34 +136,82 @@ def dashboard(
 
 ):
 
+    jobs = db.query(Job).all()
+
+
+    # Total processing time
+    total_processing_time = sum(
+        [
+            job.processing_time or 0
+            for job in jobs
+        ]
+    )
+
+
     return {
 
 
         "total_jobs":
-        db.query(Job).count(),
+        len(jobs),
+
 
 
         "pending_jobs":
         db.query(Job)
-        .filter(Job.status=="Pending")
+        .filter(Job.status == "Pending")
         .count(),
+
 
 
         "running_jobs":
         db.query(Job)
-        .filter(Job.status=="Running")
+        .filter(Job.status == "Running")
         .count(),
+
 
 
         "completed_jobs":
         db.query(Job)
-        .filter(Job.status=="Completed")
+        .filter(Job.status == "Completed")
         .count(),
+
 
 
         "failed_jobs":
         db.query(Job)
-        .filter(Job.status=="Failed")
-        .count()
+        .filter(Job.status == "Failed")
+        .count(),
+
+
+
+        "processing_statistics": {
+
+            "total_processing_seconds":
+            total_processing_time
+
+        },
+
+
+
+        "queue_statistics": {
+
+            "high_priority_jobs":
+            db.query(Job)
+            .filter(Job.priority == "high")
+            .count(),
+
+
+            "medium_priority_jobs":
+            db.query(Job)
+            .filter(Job.priority == "medium")
+            .count(),
+
+
+            "low_priority_jobs":
+            db.query(Job)
+            .filter(Job.priority == "low")
+            .count()
+
+        }
 
     }

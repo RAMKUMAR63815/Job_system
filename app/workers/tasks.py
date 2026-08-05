@@ -1,6 +1,7 @@
 from app.queue.celery_app import celery_app
 from app.core.database import SessionLocal
 from app.models.job import Job
+from app.core.logger import logger
 
 import time
 from datetime import datetime
@@ -15,7 +16,7 @@ def process_job(self, job_id):
 
     try:
 
-        # Get job
+        # Get job from database
         job = db.query(Job).filter(
             Job.id == job_id
         ).first()
@@ -30,11 +31,12 @@ def process_job(self, job_id):
             db.commit()
 
 
-        print(f"Processing Job ID: {job_id}")
+        logger.info(f"Processing Job ID: {job_id}")
 
 
         # Simulate long running task
         time.sleep(10)
+
 
 
         if job:
@@ -43,10 +45,19 @@ def process_job(self, job_id):
             job.status = "Completed"
             job.completed_at = datetime.now()
 
+
+            # Calculate processing time
+            job.processing_time = (
+                job.completed_at - job.started_at
+            ).total_seconds()
+
+
             db.commit()
 
 
-        print(f"Job {job_id} Completed")
+        logger.info(
+            f"Job {job_id} Completed in {job.processing_time} seconds"
+        )
 
 
     except Exception as e:
@@ -56,15 +67,20 @@ def process_job(self, job_id):
 
             # Failed status
             job.status = "Failed"
+
             job.error_message = str(e)
+
             job.retry_count += 1
 
             db.commit()
 
 
-        print("Error:", e)
+        logger.error(
+            f"Job {job_id} Failed: {e}"
+        )
 
 
+        # Retry failed jobs
         raise self.retry(
             exc=e,
             countdown=5
